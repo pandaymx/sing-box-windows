@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [v2.2.7] - 2026-03-17
+
 ### ✨ 主要更新
 - **Fedora / RPM 支持补齐** - Linux 打包新增 `rpm` 产物，本地与 Release CI 都可直接生成 `x86_64` RPM 安装包
 - **Linux 安装包选择更准确** - 更新检查会根据发行版偏好选择 `rpm` / `deb` / `AppImage`，Fedora / RHEL 系优先返回 RPM
