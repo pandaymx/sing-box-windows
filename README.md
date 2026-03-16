@@ -117,6 +117,7 @@ The directory typically contains the SQLite database, generated configs, logs, b
 
 - [Chinese README](README.zh.md)
 - [Development Guide](docs/development.md)
+- [Release Playbook](docs/release-playbook.md)
 - [I18n Guide](docs/i18n.md)
 - [Changelog](docs/CHANGELOG.md)
 

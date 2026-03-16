@@ -117,6 +117,7 @@ pnpm tauri build
 
 - [English README](README.md)
 - [开发文档](docs/development.md)
+- [发布部署手册](docs/release-playbook.md)
 - [多语言文档](docs/i18n.md)
 - [更新日志](docs/CHANGELOG.md)
 

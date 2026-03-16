@@ -374,6 +374,8 @@ const refreshCurrentSubscription = async () => {
 
 ## 发布流程
 
+更细的“按步骤发布 runbook”请直接看 `docs/release-playbook.md`。本节只保留概要规则。
+
 ### 版本同步
 
 发布前至少同步以下文件：
