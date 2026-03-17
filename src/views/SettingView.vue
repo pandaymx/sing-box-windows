@@ -155,6 +155,13 @@
               {{ t('setting.network.configure') }}
             </n-button>
           </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <div class="setting-label">{{ t('setting.network.allowLanAccess') }}</div>
+              <div class="setting-desc">{{ t('setting.network.allowLanAccessDesc') }}</div>
+            </div>
+            <n-switch :value="appStore.allowLanAccess" @update:value="onLanAccessChange" />
+          </div>
         </div>
       </div>
 
@@ -981,6 +988,20 @@ const onIpVersionChange = async (value: boolean) => {
   } catch (error) {
     console.error('切换IPv6优先失败:', error)
     message.error(t('notification.proxyModeChangeFailed'))
+  }
+}
+
+const onLanAccessChange = async (value: boolean) => {
+  const previous = appStore.allowLanAccess
+  appStore.allowLanAccess = value
+
+  try {
+    await appStore.saveToBackend({ applyRuntime: true })
+    message.success(t('common.saveSuccess'))
+  } catch (error) {
+    console.error('切换局域网访问失败:', error)
+    appStore.allowLanAccess = previous
+    message.error(t('common.saveFailed'))
   }
 }
 
