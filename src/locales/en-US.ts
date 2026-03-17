@@ -348,6 +348,9 @@ export default {
       ports: 'Port Settings',
       portsDesc: 'Configure proxy and API ports',
       configure: 'Configure Ports',
+      allowLanAccess: 'Allow LAN Access',
+      allowLanAccessDesc:
+        'When enabled, the proxy inbound listens on 0.0.0.0 so devices on your LAN can use this machine as a proxy. The control API stays local-only.',
       proxyPort: 'Proxy Port',
       apiPort: 'API Port',
       portSettings: 'Port Settings',

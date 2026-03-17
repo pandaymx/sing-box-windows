@@ -345,6 +345,9 @@ export default {
       ports: '端口设置',
       portsDesc: '配置代理和API端口',
       configure: '配置端口',
+      allowLanAccess: '允许局域网访问',
+      allowLanAccessDesc:
+        '启用后代理端口将监听 0.0.0.0，局域网设备可通过本机 IP 使用代理；控制 API 仍仅限本机访问。',
       proxyPort: '代理端口',
       apiPort: 'API 端口',
       portSettings: '端口设置',
