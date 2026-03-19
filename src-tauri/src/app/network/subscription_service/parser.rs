@@ -549,6 +549,25 @@ fn default_tag_for_url(url: &Url) -> String {
     format!("{}-{}:{}", url.scheme(), host, port)
 }
 
+fn normalize_fingerprint(fingerprint: Option<&str>) -> String {
+    fingerprint
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("chrome")
+        .to_string()
+}
+
+fn build_tls_config(server: &str, server_name: &str, fingerprint: &str) -> Value {
+    json!({
+        "enabled": true,
+        "server_name": if server_name.is_empty() { server.to_string() } else { server_name.to_string() },
+        "utls": {
+            "enabled": true,
+            "fingerprint": normalize_fingerprint(Some(fingerprint))
+        }
+    })
+}
+
 fn parse_vless_uri(uri: &str) -> Option<Value> {
     let url = Url::parse(uri).ok()?;
     let uuid = url.username().trim();
@@ -597,13 +616,31 @@ fn parse_vless_uri(uri: &str) -> Option<Value> {
         .or_else(|| query.get("servername"))
         .map(|s| s.trim())
         .unwrap_or("");
+    let fingerprint = normalize_fingerprint(query.get("fp").map(|s| s.as_str()));
 
     if security == "tls" || security == "reality" || !sni.is_empty() {
-        node["tls"] = json!({
-            "enabled": true,
-            "server_name": if sni.is_empty() { server.clone() } else { sni.to_string() },
-            "utls": { "enabled": true, "fingerprint": "chrome" }
-        });
+        let mut tls = build_tls_config(&server, sni, &fingerprint);
+        if security == "reality" {
+            let mut reality = json!({
+                "enabled": true
+            });
+            if let Some(public_key) = query
+                .get("pbk")
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                reality["public_key"] = json!(public_key);
+            }
+            if let Some(short_id) = query
+                .get("sid")
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+            {
+                reality["short_id"] = json!(short_id);
+            }
+            tls["reality"] = reality;
+        }
+        node["tls"] = tls;
     }
 
     // 传输层（最常见：ws）
@@ -680,13 +717,9 @@ fn parse_trojan_uri(uri: &str) -> Option<Value> {
         "server": server,
         "server_port": server_port,
         "password": password,
-        "tls": {
-            "enabled": true,
-            "server_name": if sni.is_empty() { server.clone() } else { sni.to_string() },
-            "insecure": insecure,
-            "utls": { "enabled": true, "fingerprint": "chrome" }
-        }
+        "tls": build_tls_config(&server, sni, "chrome")
     });
+    node["tls"]["insecure"] = json!(insecure);
 
     // 传输层（最常见：ws）
     let network = query
@@ -835,11 +868,7 @@ fn parse_vmess_uri(uri: &str) -> Option<Value> {
         .unwrap_or("");
 
     if tls.eq_ignore_ascii_case("tls") {
-        node["tls"] = json!({
-            "enabled": true,
-            "server_name": if sni.is_empty() { node["server"].as_str().unwrap_or("").to_string() } else { sni.to_string() },
-            "utls": { "enabled": true, "fingerprint": "chrome" }
-        });
+        node["tls"] = build_tls_config(node["server"].as_str().unwrap_or(""), sni, "chrome");
     }
 
     let network = v.get("net").and_then(|s| s.as_str()).unwrap_or("");
