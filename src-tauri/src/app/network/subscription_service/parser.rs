@@ -624,18 +624,10 @@ fn parse_vless_uri(uri: &str) -> Option<Value> {
             let mut reality = json!({
                 "enabled": true
             });
-            if let Some(public_key) = query
-                .get("pbk")
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-            {
+            if let Some(public_key) = query.get("pbk").map(|s| s.trim()).filter(|s| !s.is_empty()) {
                 reality["public_key"] = json!(public_key);
             }
-            if let Some(short_id) = query
-                .get("sid")
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-            {
+            if let Some(short_id) = query.get("sid").map(|s| s.trim()).filter(|s| !s.is_empty()) {
                 reality["short_id"] = json!(short_id);
             }
             tls["reality"] = reality;

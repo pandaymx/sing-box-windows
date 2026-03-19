@@ -20,8 +20,14 @@ fn parse_vless_reality_uri_preserves_reality_fields() {
     assert_eq!(nodes.len(), 1);
     assert_eq!(nodes[0]["type"].as_str().unwrap(), "vless");
     assert_eq!(nodes[0]["flow"].as_str().unwrap(), "xtls-rprx-vision");
-    assert_eq!(nodes[0]["tls"]["server_name"].as_str().unwrap(), "www.example.com");
-    assert_eq!(nodes[0]["tls"]["utls"]["fingerprint"].as_str().unwrap(), "firefox");
+    assert_eq!(
+        nodes[0]["tls"]["server_name"].as_str().unwrap(),
+        "www.example.com"
+    );
+    assert_eq!(
+        nodes[0]["tls"]["utls"]["fingerprint"].as_str().unwrap(),
+        "firefox"
+    );
     assert!(nodes[0]["tls"]["reality"]["enabled"].as_bool().unwrap());
     assert_eq!(
         nodes[0]["tls"]["reality"]["public_key"].as_str().unwrap(),
@@ -39,7 +45,10 @@ fn parse_vless_reality_uri_defaults_fingerprint_to_chrome() {
     let nodes = extract_nodes_from_subscription(content).expect("should parse");
 
     assert_eq!(nodes.len(), 1);
-    assert_eq!(nodes[0]["tls"]["utls"]["fingerprint"].as_str().unwrap(), "chrome");
+    assert_eq!(
+        nodes[0]["tls"]["utls"]["fingerprint"].as_str().unwrap(),
+        "chrome"
+    );
     assert_eq!(
         nodes[0]["tls"]["reality"]["public_key"].as_str().unwrap(),
         "PUBLIC_KEY"

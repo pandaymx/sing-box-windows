@@ -16,7 +16,7 @@ use crate::utils::http_client;
 use base64::{engine::general_purpose, Engine as _};
 use helpers::{backup_existing_config, resolve_target_config_path, runtime_state_from_config};
 use parser::extract_nodes_from_subscription;
-use reqwest::header::HeaderMap;
+use reqwest::header::{HeaderMap, USER_AGENT};
 use serde::Serialize;
 use serde_json::Value;
 use std::error::Error;
@@ -64,6 +64,14 @@ struct SubscriptionUserInfo {
     total: Option<u64>,
     expire: Option<u64>,
 }
+
+#[derive(Debug, Clone)]
+struct SubscriptionFetchResult {
+    body: String,
+    userinfo: Option<SubscriptionUserInfo>,
+}
+
+const SUBSCRIPTION_USERINFO_COMPAT_UAS: [&str; 2] = ["clash.meta", "clash-verge/1.7.7"];
 
 fn parse_subscription_userinfo(raw: &str) -> Option<SubscriptionUserInfo> {
     let mut info = SubscriptionUserInfo {
@@ -121,15 +129,80 @@ fn extract_subscription_userinfo(headers: &HeaderMap) -> Option<SubscriptionUser
     parse_subscription_userinfo(raw)
 }
 
-async fn fetch_subscription_content(
+fn should_retry_subscription_userinfo(result: &SubscriptionFetchResult) -> bool {
+    result.userinfo.is_none() && !result.body.trim().is_empty()
+}
+
+fn merge_subscription_fetch_result(
+    primary: SubscriptionFetchResult,
+    fallback_userinfo: Option<SubscriptionUserInfo>,
+) -> SubscriptionFetchResult {
+    SubscriptionFetchResult {
+        body: primary.body,
+        userinfo: primary.userinfo.or(fallback_userinfo),
+    }
+}
+
+async fn fetch_subscription_content_with_user_agent(
     url: &str,
-) -> Result<(String, Option<SubscriptionUserInfo>), Box<dyn Error>> {
-    let response = http_client::get_client().get(url).send().await?;
+    user_agent: Option<&str>,
+) -> Result<SubscriptionFetchResult, Box<dyn Error>> {
+    let mut request = http_client::get_client().get(url);
+    if let Some(user_agent) = user_agent {
+        request = request.header(USER_AGENT, user_agent);
+    }
+
+    let response = request.send().await?;
     response.error_for_status_ref()?;
     let headers = response.headers().clone();
     let body = response.text().await?;
     let userinfo = extract_subscription_userinfo(&headers);
-    Ok((body, userinfo))
+    Ok(SubscriptionFetchResult { body, userinfo })
+}
+
+async fn fetch_subscription_content(
+    url: &str,
+) -> Result<(String, Option<SubscriptionUserInfo>), Box<dyn Error>> {
+    let primary = fetch_subscription_content_with_user_agent(url, None).await?;
+
+    if !should_retry_subscription_userinfo(&primary) {
+        return Ok((primary.body, primary.userinfo));
+    }
+
+    info!(
+        "订阅响应缺少 subscription-userinfo，尝试使用兼容 User-Agent 重试: {}",
+        url
+    );
+
+    let mut fallback_userinfo = None;
+    for compat_user_agent in SUBSCRIPTION_USERINFO_COMPAT_UAS {
+        match fetch_subscription_content_with_user_agent(url, Some(compat_user_agent)).await {
+            Ok(result) => {
+                if let Some(userinfo) = result.userinfo {
+                    info!(
+                        "使用兼容 User-Agent 获取到 subscription-userinfo: {}",
+                        compat_user_agent
+                    );
+                    fallback_userinfo = Some(userinfo);
+                    break;
+                }
+
+                info!(
+                    "兼容 User-Agent 仍未返回 subscription-userinfo: {}",
+                    compat_user_agent
+                );
+            }
+            Err(err) => {
+                warn!(
+                    "兼容 User-Agent 重试订阅信息失败 ({}): {}",
+                    compat_user_agent, err
+                );
+            }
+        }
+    }
+
+    let merged = merge_subscription_fetch_result(primary, fallback_userinfo);
+    Ok((merged.body, merged.userinfo))
 }
 
 async fn update_subscription_userinfo(
