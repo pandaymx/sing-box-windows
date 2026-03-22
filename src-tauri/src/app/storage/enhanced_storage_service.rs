@@ -56,7 +56,9 @@ fn sync_settings_to_config_file(
 }
 
 /// 获取数据库服务的辅助函数（单例初始化）
-pub async fn get_enhanced_storage(app: &AppHandle) -> Result<Arc<EnhancedStorageService>, String> {
+pub async fn get_enhanced_storage<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<Arc<EnhancedStorageService>, String> {
     let cell_state = app.state::<Arc<OnceCell<Arc<EnhancedStorageService>>>>();
     let cell = Arc::clone(&*cell_state);
 
@@ -82,7 +84,7 @@ pub struct EnhancedStorageService {
 }
 
 impl EnhancedStorageService {
-    pub async fn new(app_handle: &AppHandle) -> StorageResult<Self> {
+    pub async fn new<R: tauri::Runtime>(app_handle: &AppHandle<R>) -> StorageResult<Self> {
         let app_data_dir = resolve_app_data_dir(app_handle);
 
         // 确保目录存在
@@ -272,7 +274,13 @@ pub fn save_startup_preferences_sync<R: tauri::Runtime>(
 // Tauri 命令实现
 #[tauri::command]
 pub async fn db_get_app_config(app: AppHandle) -> Result<AppConfig, String> {
-    let storage = get_enhanced_storage(&app).await?;
+    db_get_app_config_internal(&app).await
+}
+
+pub async fn db_get_app_config_internal<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<AppConfig, String> {
+    let storage = get_enhanced_storage(app).await?;
     #[allow(unused_mut)]
     let mut config = storage.get_app_config().await.map_err(|e| e.to_string())?;
 
@@ -301,13 +309,16 @@ pub async fn db_get_app_config(app: AppHandle) -> Result<AppConfig, String> {
     Ok(config)
 }
 
-pub async fn db_save_app_config_internal(config: AppConfig, app: AppHandle) -> Result<(), String> {
-    let storage = get_enhanced_storage(&app).await?;
+pub async fn db_save_app_config_internal<R: tauri::Runtime>(
+    config: AppConfig,
+    app: &AppHandle<R>,
+) -> Result<(), String> {
+    let storage = get_enhanced_storage(app).await?;
     storage
         .save_app_config(&config)
         .await
         .map_err(|e| e.to_string())?;
-    save_startup_preferences_sync(&app, &config)?;
+    save_startup_preferences_sync(app, &config)?;
     Ok(())
 }
 
@@ -317,7 +328,7 @@ pub async fn db_save_app_config(
     app: AppHandle,
     apply_runtime: Option<bool>,
 ) -> Result<(), String> {
-    db_save_app_config_internal(config, app.clone()).await?;
+    db_save_app_config_internal(config, &app).await?;
     let apply_runtime = apply_runtime.unwrap_or(false);
 
     // 默认仅持久化，不自动触发运行态变更。
@@ -328,7 +339,7 @@ pub async fn db_save_app_config(
 
     // 保存设置后，尽量把变更同步到“当前生效配置文件”，避免用户需要重新下载订阅/重启应用才能生效。
     // 同步逻辑采用“局部 patch”策略：如果配置文件不是本程序生成的结构，会尽量只修改端口/TUN/DNS 策略等通用字段。
-    let effective_config = db_get_app_config(app.clone()).await?;
+    let effective_config = db_get_app_config_internal(&app).await?;
     let storage = get_enhanced_storage(&app).await?;
     if let Some(path) = effective_config.active_config_path.clone() {
         let config_path = std::path::PathBuf::from(path);

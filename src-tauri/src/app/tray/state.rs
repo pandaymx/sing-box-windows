@@ -1,3 +1,4 @@
+use super::model::TrayToggleProxyFeaturePayload;
 use super::model::{TrayCloseBehavior, TrayProxyMode, TrayRuntimeStateInput};
 
 #[derive(Debug, Clone)]
@@ -11,6 +12,7 @@ pub struct TrayRuntimeState {
     pub last_visible_route: String,
     pub close_behavior: TrayCloseBehavior,
     pub pending_restore_route: Option<String>,
+    pub pending_proxy_toggle: Option<TrayToggleProxyFeaturePayload>,
     pub keep_alive_without_windows: bool,
     pub allow_app_exit: bool,
 }
@@ -27,6 +29,7 @@ impl Default for TrayRuntimeState {
             last_visible_route: "/".to_string(),
             close_behavior: TrayCloseBehavior::Hide,
             pending_restore_route: None,
+            pending_proxy_toggle: None,
             keep_alive_without_windows: false,
             allow_app_exit: false,
         }
@@ -119,6 +122,22 @@ impl TrayRuntimeState {
 
     pub fn take_pending_restore_route(&mut self) -> Option<String> {
         self.pending_restore_route.take()
+    }
+
+    pub fn set_pending_proxy_toggle(&mut self, payload: TrayToggleProxyFeaturePayload) -> bool {
+        let changed = self
+            .pending_proxy_toggle
+            .as_ref()
+            .map(|existing| {
+                existing.feature != payload.feature || existing.enabled != payload.enabled
+            })
+            .unwrap_or(true);
+        self.pending_proxy_toggle = Some(payload);
+        changed
+    }
+
+    pub fn take_pending_proxy_toggle(&mut self) -> Option<TrayToggleProxyFeaturePayload> {
+        self.pending_proxy_toggle.take()
     }
 }
 

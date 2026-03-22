@@ -111,7 +111,7 @@ async fn import_kernel_executable_inner(
 
     if let Ok(mut app_config) = db_get_app_config(app_handle.clone()).await {
         app_config.installed_kernel_version = Some(imported_version.clone());
-        if let Err(e) = db_save_app_config_internal(app_config, app_handle.clone()).await {
+        if let Err(e) = db_save_app_config_internal(app_config, app_handle).await {
             warn!("保存导入后的内核版本失败: {}", e);
         }
     }

@@ -1,5 +1,6 @@
 use super::model::TrayNavigatePayload;
 use super::model::TrayRuntimeStateInput;
+use super::model::TrayToggleProxyFeaturePayload;
 use super::service;
 use tauri::AppHandle;
 
@@ -35,6 +36,11 @@ pub fn tray_close_main_window(app_handle: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn tray_consume_pending_restore_route() -> Option<TrayNavigatePayload> {
     service::consume_pending_restore_route()
+}
+
+#[tauri::command]
+pub fn tray_consume_pending_proxy_toggle() -> Option<TrayToggleProxyFeaturePayload> {
+    service::consume_pending_proxy_toggle()
 }
 
 #[tauri::command]

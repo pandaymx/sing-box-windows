@@ -141,7 +141,7 @@ async fn persist_active_config_path_if_missing(
 
     if app_config.active_config_path.is_none() {
         app_config.active_config_path = Some(path.to_string_lossy().to_string());
-        db_save_app_config_internal(app_config, app_handle.clone())
+        db_save_app_config_internal(app_config, app_handle)
             .await
             .map_err(|e| format!("保存应用配置失败: {}", e))?;
     }
@@ -164,7 +164,7 @@ pub async fn ensure_singbox_config(app_handle: &AppHandle) -> Result<(), String>
             app_config.active_config_path, rewritten
         );
         app_config.active_config_path = Some(rewritten.clone());
-        db_save_app_config_internal(app_config.clone(), app_handle.clone())
+        db_save_app_config_internal(app_config.clone(), app_handle)
             .await
             .map_err(|e| format!("保存重定位后的 active_config_path 失败: {}", e))?;
     }

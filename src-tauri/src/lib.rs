@@ -253,6 +253,7 @@ pub fn run() {
             crate::app::tray::commands::tray_hide_main_window,
             crate::app::tray::commands::tray_close_main_window,
             crate::app::tray::commands::tray_consume_pending_restore_route,
+            crate::app::tray::commands::tray_consume_pending_proxy_toggle,
             crate::app::tray::commands::tray_request_app_exit,
         ])
         .build(tauri::generate_context!())

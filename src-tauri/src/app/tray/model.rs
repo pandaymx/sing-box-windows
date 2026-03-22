@@ -19,8 +19,8 @@ pub mod events {
     pub const ACTION_HIDE_WINDOW: &str = "tray-action-hide-window";
     pub const ACTION_NAVIGATE_LAST_ROUTE: &str = "tray-action-navigate-last-route";
     pub const ACTION_EXIT_REQUESTED: &str = "tray-action-exit-requested";
-    pub const ACTION_RESTART_KERNEL: &str = "tray-action-restart-kernel";
     pub const ACTION_SWITCH_PROXY_MODE: &str = "tray-action-switch-proxy-mode";
+    pub const RUNTIME_STATE_UPDATED: &str = "tray-runtime-state-updated";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -81,7 +81,7 @@ pub struct TrayNavigatePayload {
     pub path: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrayToggleProxyFeaturePayload {
     pub feature: String,

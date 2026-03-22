@@ -187,7 +187,7 @@ async fn save_installed_version(app_handle: &AppHandle, version: String) -> Resu
         Ok(mut config) => {
             if config.installed_kernel_version.as_deref() != Some(normalized.as_str()) {
                 config.installed_kernel_version = Some(normalized);
-                db_save_app_config_internal(config, app_handle.clone()).await?;
+                db_save_app_config_internal(config, app_handle).await?;
             }
             Ok(())
         }

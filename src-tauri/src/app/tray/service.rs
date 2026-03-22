@@ -4,12 +4,15 @@ use super::model::{
     TrayToggleProxyFeaturePayload, TRAY_ICON_ID,
 };
 use super::state::TrayRuntimeState;
+use crate::app::core::kernel_service::runtime::{apply_proxy_settings, kernel_restart_fast};
+use crate::app::core::kernel_service::status::is_kernel_running;
+use crate::app::storage::enhanced_storage_service::db_save_app_config_internal;
 use lazy_static::lazy_static;
 use std::sync::RwLock;
 use std::time::Duration;
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow, WebviewWindowBuilder};
 use tracing::{debug, info, warn};
 
 lazy_static! {
@@ -162,8 +165,8 @@ fn compose_tooltip(state: &TrayRuntimeState, text: &TrayText) -> String {
     tooltip
 }
 
-fn resolve_tray_icon<R: Runtime>(
-    app: &AppHandle<R>,
+fn resolve_tray_icon(
+    app: &AppHandle,
     state: &TrayRuntimeState,
 ) -> Option<tauri::image::Image<'static>> {
     if let Some(icon) = app.default_window_icon() {
@@ -177,11 +180,11 @@ fn resolve_tray_icon<R: Runtime>(
     None
 }
 
-fn build_tray_menu<R: Runtime>(
-    app: &AppHandle<R>,
+fn build_tray_menu(
+    app: &AppHandle,
     state: &TrayRuntimeState,
     text: &TrayText,
-) -> Result<tauri::menu::Menu<R>, String> {
+) -> Result<tauri::menu::Menu<tauri::Wry>, String> {
     let show_window_item = MenuItemBuilder::with_id(menu_ids::SHOW_WINDOW, text.show_window)
         .build(app)
         .map_err(|e| format!("创建托盘菜单项失败: {}", e))?;
@@ -253,17 +256,23 @@ fn build_tray_menu<R: Runtime>(
         .map_err(|e| format!("创建托盘菜单失败: {}", e))
 }
 
-fn handle_proxy_toggle_menu_event<R: Runtime>(app: &AppHandle<R>, feature: &str, enabled: bool) {
-    let payload = TrayToggleProxyFeaturePayload {
-        feature: feature.to_string(),
-        enabled,
-    };
-    if let Err(err) = app.emit(events::ACTION_SWITCH_PROXY_MODE, payload) {
-        warn!("发送托盘代理切换事件失败: {}", err);
-    }
+fn handle_proxy_toggle_menu_event(app: &AppHandle, feature: &str, enabled: bool) {
+    let app_handle = app.clone();
+    let feature = feature.to_string();
+    tauri::async_runtime::spawn(async move {
+        let result = if feature == "systemProxy" {
+            apply_system_proxy_toggle_from_tray(&app_handle, enabled).await
+        } else {
+            apply_tun_toggle_from_tray(&app_handle, enabled).await
+        };
+
+        if let Err(err) = result {
+            warn!("托盘代理切换失败: {}", err);
+        }
+    });
 }
 
-fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, menu_id: &str) {
+fn handle_menu_event(app: &AppHandle, menu_id: &str) {
     match menu_id {
         menu_ids::SHOW_WINDOW => {
             if let Err(err) = show_main_window(app, true) {
@@ -271,9 +280,12 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, menu_id: &str) {
             }
         }
         menu_ids::KERNEL_RESTART => {
-            if let Err(err) = app.emit(events::ACTION_RESTART_KERNEL, ()) {
-                warn!("发送重启内核事件失败: {}", err);
-            }
+            let app_handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(err) = restart_kernel_from_tray(&app_handle).await {
+                    warn!("托盘重启内核失败: {}", err);
+                }
+            });
         }
         menu_ids::PROXY_SYSTEM => {
             let enabled = with_state_read(|state| !state.system_proxy_enabled);
@@ -294,7 +306,7 @@ fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, menu_id: &str) {
     }
 }
 
-fn handle_tray_icon_event<R: Runtime>(tray: &tauri::tray::TrayIcon<R>, event: TrayIconEvent) {
+fn handle_tray_icon_event(tray: &tauri::tray::TrayIcon, event: TrayIconEvent) {
     if let TrayIconEvent::Click {
         button: MouseButton::Left,
         button_state: MouseButtonState::Up,
@@ -307,10 +319,7 @@ fn handle_tray_icon_event<R: Runtime>(tray: &tauri::tray::TrayIcon<R>, event: Tr
     }
 }
 
-fn create_or_replace_tray_icon<R: Runtime>(
-    app: &AppHandle<R>,
-    state: &TrayRuntimeState,
-) -> Result<(), String> {
+fn create_or_replace_tray_icon(app: &AppHandle, state: &TrayRuntimeState) -> Result<(), String> {
     if app.remove_tray_by_id(TRAY_ICON_ID).is_some() {
         info!("已移除旧托盘实例，准备重建");
     }
@@ -342,12 +351,12 @@ fn create_or_replace_tray_icon<R: Runtime>(
         .map_err(|e| format!("创建托盘图标失败: {}", e))
 }
 
-pub fn init_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+pub fn init_tray(app: &AppHandle) -> Result<(), String> {
     let state = with_state_read(|state| state.clone());
     create_or_replace_tray_icon(app, &state)
 }
 
-pub fn refresh_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+pub fn refresh_tray(app: &AppHandle) -> Result<(), String> {
     let state = with_state_read(|state| state.clone());
     let text = tray_text_for_locale(&state.locale);
     let menu = build_tray_menu(app, &state, &text)?;
@@ -373,10 +382,7 @@ pub fn refresh_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     create_or_replace_tray_icon(app, &state)
 }
 
-pub fn sync_tray_state<R: Runtime>(
-    app: &AppHandle<R>,
-    payload: TrayRuntimeStateInput,
-) -> Result<(), String> {
+pub fn sync_tray_state(app: &AppHandle, payload: TrayRuntimeStateInput) -> Result<(), String> {
     let changed = with_state_write(|state| state.apply_sync_payload(payload));
     if !changed {
         return Ok(());
@@ -390,6 +396,10 @@ pub fn set_last_visible_route(path: &str) {
     });
 }
 
+pub fn consume_pending_proxy_toggle() -> Option<TrayToggleProxyFeaturePayload> {
+    with_state_write(|state| state.take_pending_proxy_toggle())
+}
+
 pub fn apply_startup_preferences(close_behavior: TrayCloseBehavior, window_visible: bool) {
     with_state_write(|state| {
         state.close_behavior = close_behavior;
@@ -399,7 +409,7 @@ pub fn apply_startup_preferences(close_behavior: TrayCloseBehavior, window_visib
     });
 }
 
-fn create_main_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+fn create_main_window(app: &AppHandle) -> Result<(), String> {
     let window_config = app
         .config()
         .app
@@ -421,7 +431,7 @@ fn create_main_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     .map_err(|_| "重建主窗口线程异常退出".to_string())?
 }
 
-fn ensure_main_window<R: Runtime>(app: &AppHandle<R>) -> Result<(WebviewWindow<R>, bool), String> {
+fn ensure_main_window(app: &AppHandle) -> Result<(WebviewWindow, bool), String> {
     if let Some(window) = app.get_webview_window("main") {
         return Ok((window, false));
     }
@@ -433,7 +443,7 @@ fn ensure_main_window<R: Runtime>(app: &AppHandle<R>) -> Result<(WebviewWindow<R
     Ok((window, true))
 }
 
-pub fn show_main_window<R: Runtime>(app: &AppHandle<R>, emit_events: bool) -> Result<(), String> {
+pub fn show_main_window(app: &AppHandle, emit_events: bool) -> Result<(), String> {
     let (main_window, recreated) = ensure_main_window(app)?;
 
     let _ = main_window.unminimize();
@@ -477,7 +487,7 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>, emit_events: bool) -> Re
     Ok(())
 }
 
-pub fn hide_main_window<R: Runtime>(app: &AppHandle<R>, emit_events: bool) -> Result<(), String> {
+pub fn hide_main_window(app: &AppHandle, emit_events: bool) -> Result<(), String> {
     let main_window = app
         .get_webview_window("main")
         .ok_or_else(|| "未找到主窗口".to_string())?;
@@ -498,17 +508,14 @@ pub fn hide_main_window<R: Runtime>(app: &AppHandle<R>, emit_events: bool) -> Re
     Ok(())
 }
 
-pub fn close_main_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+pub fn close_main_window(app: &AppHandle) -> Result<(), String> {
     match with_state_read(|state| state.close_behavior) {
         TrayCloseBehavior::Hide => hide_main_window(app, true),
         TrayCloseBehavior::Lightweight => destroy_main_window_for_tray(app),
     }
 }
 
-pub fn enter_startup_background_mode<R: Runtime>(
-    app: &AppHandle<R>,
-    lightweight: bool,
-) -> Result<(), String> {
+pub fn enter_startup_background_mode(app: &AppHandle, lightweight: bool) -> Result<(), String> {
     if !lightweight {
         return hide_main_window(app, false);
     }
@@ -528,7 +535,7 @@ pub fn should_prevent_exit() -> bool {
     with_state_read(|state| state.keep_alive_without_windows && !state.allow_app_exit)
 }
 
-fn destroy_main_window_for_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+fn destroy_main_window_for_tray(app: &AppHandle) -> Result<(), String> {
     let main_window = app
         .get_webview_window("main")
         .ok_or_else(|| "未找到主窗口".to_string())?;
@@ -551,7 +558,7 @@ fn destroy_main_window_for_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), St
     Ok(())
 }
 
-pub fn request_app_exit<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
+pub fn request_app_exit(app: &AppHandle) -> Result<(), String> {
     let _ = app.emit(events::ACTION_EXIT_REQUESTED, ());
     with_state_write(|state| {
         state.allow_app_exit = true;
@@ -575,4 +582,252 @@ pub fn request_app_exit<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     });
 
     Ok(())
+}
+
+async fn restart_kernel_from_tray(app: &AppHandle) -> Result<(), String> {
+    let result = kernel_restart_fast(
+        app.clone(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    if !result
+        .get("success")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+    {
+        return Err(result
+            .get("message")
+            .and_then(|value| value.as_str())
+            .unwrap_or("重启内核失败")
+            .to_string());
+    }
+
+    refresh_runtime_state_from_backend(app).await
+}
+
+async fn apply_system_proxy_toggle_from_tray(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    let result = apply_proxy_settings(app.clone(), Some(enabled), None).await?;
+    if !result
+        .get("success")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+    {
+        return Err(result
+            .get("message")
+            .and_then(|value| value.as_str())
+            .unwrap_or("应用系统代理配置失败")
+            .to_string());
+    }
+
+    let mut app_config =
+        crate::app::storage::enhanced_storage_service::db_get_app_config_internal(app).await?;
+    app_config.system_proxy_enabled = enabled;
+    app_config.proxy_mode =
+        derive_proxy_mode(app_config.system_proxy_enabled, app_config.tun_enabled);
+    db_save_app_config_internal(app_config, app).await?;
+    refresh_runtime_state_from_backend(app).await
+}
+
+async fn apply_tun_toggle_from_tray(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    if !enabled {
+        let apply_result = apply_proxy_settings(app.clone(), None, Some(false)).await?;
+        if !apply_result
+            .get("success")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+        {
+            return Err(apply_result
+                .get("message")
+                .and_then(|value| value.as_str())
+                .unwrap_or("应用 TUN 关闭配置失败")
+                .to_string());
+        }
+
+        let restart_result = kernel_restart_fast(
+            app.clone(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(false),
+        )
+        .await?;
+        if !restart_result
+            .get("success")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+        {
+            return Err(restart_result
+                .get("message")
+                .and_then(|value| value.as_str())
+                .unwrap_or("关闭 TUN 后重启内核失败")
+                .to_string());
+        }
+
+        let mut app_config =
+            crate::app::storage::enhanced_storage_service::db_get_app_config_internal(app).await?;
+        app_config.tun_enabled = false;
+        app_config.proxy_mode =
+            derive_proxy_mode(app_config.system_proxy_enabled, app_config.tun_enabled);
+        db_save_app_config_internal(app_config, app).await?;
+        return refresh_runtime_state_from_backend(app).await;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if !crate::app::system::system_service::check_admin() {
+            return queue_proxy_toggle_for_frontend(app, "tun", true);
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        let sudo_status =
+            crate::app::system::sudo_service::sudo_password_status(app.clone()).await?;
+        if !sudo_status.supported {
+            return Err("当前平台暂不支持该操作".to_string());
+        }
+
+        if !sudo_status.has_saved {
+            return queue_proxy_toggle_for_frontend(app, "tun", true);
+        }
+    }
+
+    let apply_result = apply_proxy_settings(app.clone(), None, Some(true)).await?;
+    if !apply_result
+        .get("success")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+    {
+        return Err(apply_result
+            .get("message")
+            .and_then(|value| value.as_str())
+            .unwrap_or("应用 TUN 配置失败")
+            .to_string());
+    }
+
+    let restart_result = kernel_restart_fast(
+        app.clone(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(true),
+    )
+    .await?;
+    if !restart_result
+        .get("success")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+    {
+        let message = restart_result
+            .get("message")
+            .and_then(|value| value.as_str())
+            .unwrap_or("启用 TUN 后重启内核失败")
+            .to_string();
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        if message.contains(crate::app::system::sudo_service::SUDO_PASSWORD_REQUIRED)
+            || message.contains(crate::app::system::sudo_service::SUDO_PASSWORD_INVALID)
+        {
+            return queue_proxy_toggle_for_frontend(app, "tun", true);
+        }
+
+        return Err(message);
+    }
+
+    let mut app_config =
+        crate::app::storage::enhanced_storage_service::db_get_app_config_internal(app).await?;
+    app_config.tun_enabled = true;
+    app_config.proxy_mode =
+        derive_proxy_mode(app_config.system_proxy_enabled, app_config.tun_enabled);
+    db_save_app_config_internal(app_config, app).await?;
+    refresh_runtime_state_from_backend(app).await
+}
+
+fn derive_proxy_mode(system_proxy_enabled: bool, tun_enabled: bool) -> String {
+    if tun_enabled {
+        "tun".to_string()
+    } else if system_proxy_enabled {
+        "system".to_string()
+    } else {
+        "manual".to_string()
+    }
+}
+
+async fn refresh_runtime_state_from_backend(app: &AppHandle) -> Result<(), String> {
+    let app_config =
+        crate::app::storage::enhanced_storage_service::db_get_app_config_internal(app).await?;
+    let kernel_running = is_kernel_running().await.unwrap_or(false);
+    let close_behavior = TrayCloseBehavior::from_raw(&app_config.tray_close_behavior);
+
+    let changed = with_state_write(|state| {
+        let mut changed = false;
+
+        if state.system_proxy_enabled != app_config.system_proxy_enabled {
+            state.system_proxy_enabled = app_config.system_proxy_enabled;
+            changed = true;
+        }
+        if state.tun_enabled != app_config.tun_enabled {
+            state.tun_enabled = app_config.tun_enabled;
+            changed = true;
+        }
+        if state.kernel_running != kernel_running {
+            state.kernel_running = kernel_running;
+            changed = true;
+        }
+        if state.close_behavior != close_behavior {
+            state.close_behavior = close_behavior;
+            changed = true;
+        }
+
+        changed
+    });
+
+    if changed {
+        refresh_tray(app)?;
+    }
+
+    let _ = app.emit(events::RUNTIME_STATE_UPDATED, ());
+    Ok(())
+}
+
+fn queue_proxy_toggle_for_frontend(
+    app: &AppHandle,
+    feature: &str,
+    enabled: bool,
+) -> Result<(), String> {
+    let payload = TrayToggleProxyFeaturePayload {
+        feature: feature.to_string(),
+        enabled,
+    };
+
+    if app.get_webview_window("main").is_some() {
+        show_main_window(app, true)?;
+        app.emit(events::ACTION_SWITCH_PROXY_MODE, payload)
+            .map_err(|e| format!("发送托盘代理切换事件失败: {}", e))?;
+        return Ok(());
+    }
+
+    with_state_write(|state| {
+        state.set_pending_proxy_toggle(payload);
+    });
+    show_main_window(app, true)
 }

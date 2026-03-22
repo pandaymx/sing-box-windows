@@ -389,7 +389,7 @@ pub async fn download_kernel(app_handle: AppHandle, version: Option<String>) -> 
     };
     if let Ok(mut config) = db_get_app_config(app_handle.clone()).await {
         config.installed_kernel_version = Some(version);
-        if let Err(e) = db_save_app_config_internal(config, app_handle).await {
+        if let Err(e) = db_save_app_config_internal(config, &app_handle).await {
             warn!("保存内核版本信息失败: {}", e);
         } else {
             info!("已更新数据库中的已安装内核版本信息");

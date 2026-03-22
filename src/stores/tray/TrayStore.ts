@@ -399,6 +399,11 @@ export const useTrayStore = defineStore('tray', () => {
       },
     )
 
+    await register(APP_EVENTS.trayRuntimeStateUpdated, async () => {
+      await appStore.loadFromBackend()
+      scheduleSync(true)
+    })
+
     await register(APP_EVENTS.trayActionExitRequested, () => {
       appStore.clearMessages()
     })
@@ -462,6 +467,13 @@ export const useTrayStore = defineStore('tray', () => {
     if (pendingRoute?.path) {
       await handleRouteRestore(pendingRoute.path)
       scheduleSync(true)
+    }
+    const pendingProxyToggle = await trayService.consumePendingProxyToggle().catch((error) => {
+      console.error('获取待处理托盘代理切换失败:', error)
+      return null
+    })
+    if (pendingProxyToggle && isTrayTogglePayload(pendingProxyToggle)) {
+      await toggleProxyFeatureFromTray(pendingProxyToggle)
     }
     return true
   }

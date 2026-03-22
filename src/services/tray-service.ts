@@ -65,6 +65,14 @@ export const trayService = {
     )
   },
 
+  consumePendingProxyToggle() {
+    return invokeWithAppContext<{ feature: 'systemProxy' | 'tun'; enabled: boolean } | null>(
+      'tray_consume_pending_proxy_toggle',
+      undefined,
+      { skipDataRestore: true },
+    )
+  },
+
   requestExit() {
     return invokeWithAppContext<void>('tray_request_app_exit', undefined, {
       skipDataRestore: true,

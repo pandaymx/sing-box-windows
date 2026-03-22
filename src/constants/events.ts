@@ -41,6 +41,7 @@ export const APP_EVENTS = {
   trayActionExitRequested: 'tray-action-exit-requested',
   trayActionRestartKernel: 'tray-action-restart-kernel',
   trayActionSwitchProxyMode: 'tray-action-switch-proxy-mode',
+  trayRuntimeStateUpdated: 'tray-runtime-state-updated',
 } as const
 
 export type AppEventName = (typeof APP_EVENTS)[keyof typeof APP_EVENTS]
@@ -75,4 +76,5 @@ export type AppEventPayloads = {
   [APP_EVENTS.trayActionExitRequested]: unknown
   [APP_EVENTS.trayActionRestartKernel]: unknown
   [APP_EVENTS.trayActionSwitchProxyMode]: TrayToggleProxyFeaturePayload
+  [APP_EVENTS.trayRuntimeStateUpdated]: unknown
 }

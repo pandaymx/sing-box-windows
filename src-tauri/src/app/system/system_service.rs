@@ -44,14 +44,34 @@ fn restart_as_admin_windows(app_handle: tauri::AppHandle) -> Result<(), String> 
     // 获取当前可执行文件路径
     let current_exe = std::env::current_exe()
         .map_err(|e| format!("{}: {}", messages::ERR_GET_EXE_PATH_FAILED, e))?;
+    let current_pid = std::process::id().to_string();
 
     // 确保文件存在
     if !current_exe.exists() {
         return Err(format!("找不到程序可执行文件: {}", current_exe.display()));
     }
 
-    // 直接使用 PowerShell 的 Start-Process -Verb RunAs 触发 UAC。
-    // 说明：旧实现依赖临时 VBS 脚本，在中文用户名/UTF-8 编码场景下容易出现路径解析错误。
+    // 通过临时 PowerShell 脚本等待当前进程退出后，再以管理员权限启动新实例。
+    // 这样可以避免：
+    // 1. single-instance 在旧实例仍存活时把新管理员实例重定向回旧实例
+    // 2. 依赖环境变量传参时，在提权边界上变量丢失导致的启动失败
+    let escaped_exe_path = current_exe.to_string_lossy().replace('\'', "''");
+    let relaunch_script = format!(
+        "$ErrorActionPreference = 'SilentlyContinue'\n\
+         Wait-Process -Id {pid} -ErrorAction SilentlyContinue\n\
+         Start-Sleep -Milliseconds 300\n\
+         Start-Process -FilePath '{exe}'\n\
+         Start-Sleep -Milliseconds 300\n\
+         Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue\n",
+        pid = current_pid,
+        exe = escaped_exe_path
+    );
+    let script_path =
+        std::env::temp_dir().join(format!("sing-box-windows-elevate-{}.ps1", current_pid));
+    std::fs::write(&script_path, relaunch_script)
+        .map_err(|e| format!("写入提权重启脚本失败: {}", e))?;
+    let script_path_string = script_path.to_string_lossy().to_string();
+
     let result = std::process::Command::new("powershell")
         .args([
             "-NoProfile",
@@ -59,15 +79,15 @@ fn restart_as_admin_windows(app_handle: tauri::AppHandle) -> Result<(), String> 
             "-WindowStyle",
             "Hidden",
             "-Command",
-            "Start-Process -FilePath $env:SINGBOX_RESTART_EXE -Verb RunAs",
+            "Start-Process -FilePath powershell.exe -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',$env:SINGBOX_ELEVATE_SCRIPT)",
         ])
-        .env("SINGBOX_RESTART_EXE", &current_exe)
+        .env("SINGBOX_ELEVATE_SCRIPT", &script_path_string)
         .creation_flags(crate::app::constants::core::process::CREATE_NO_WINDOW)
         .spawn();
 
     match result {
         Ok(_) => {
-            info!("已请求管理员权限重启应用");
+            info!("已请求管理员权限重启应用，等待当前进程退出后重新拉起");
             // 启动成功，退出当前进程
             app_handle.exit(0);
             Ok(())
@@ -83,9 +103,9 @@ fn restart_as_admin_windows(app_handle: tauri::AppHandle) -> Result<(), String> 
                     "-WindowStyle",
                     "Hidden",
                     "-Command",
-                    "Start-Process -FilePath $env:SINGBOX_RESTART_EXE -Verb RunAs",
+                    "Start-Process -FilePath powershell.exe -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',$env:SINGBOX_ELEVATE_SCRIPT)",
                 ])
-                .env("SINGBOX_RESTART_EXE", &current_exe)
+                .env("SINGBOX_ELEVATE_SCRIPT", &script_path_string)
                 .creation_flags(crate::app::constants::core::process::CREATE_NO_WINDOW)
                 .spawn();
 

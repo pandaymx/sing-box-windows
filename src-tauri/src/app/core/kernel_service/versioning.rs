@@ -232,7 +232,7 @@ pub async fn check_kernel_version(app_handle: AppHandle) -> Result<String, Strin
     if let Ok(mut config) = db_get_app_config(app_handle.clone()).await {
         // 只有当如果不一致时才保存? 或者总是保存确保最新
         config.installed_kernel_version = Some(version.clone());
-        let _ = db_save_app_config_internal(config, app_handle).await;
+        let _ = db_save_app_config_internal(config, &app_handle).await;
     }
 
     Ok(version)
