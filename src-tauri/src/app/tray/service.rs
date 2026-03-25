@@ -23,6 +23,7 @@ lazy_static! {
 #[derive(Debug, Clone, Copy)]
 struct TrayText {
     show_window: &'static str,
+    rebuild_window: &'static str,
     kernel_menu: &'static str,
     restart_kernel: &'static str,
     status_running: &'static str,
@@ -40,6 +41,7 @@ struct TrayText {
 
 const TRAY_TEXT_ZH_CN: TrayText = TrayText {
     show_window: "显示主界面",
+    rebuild_window: "重建窗口",
     kernel_menu: "内核",
     restart_kernel: "重启内核",
     status_running: "运行中",
@@ -57,6 +59,7 @@ const TRAY_TEXT_ZH_CN: TrayText = TrayText {
 
 const TRAY_TEXT_EN_US: TrayText = TrayText {
     show_window: "Show Main Window",
+    rebuild_window: "Rebuild Window",
     kernel_menu: "Kernel",
     restart_kernel: "Restart Kernel",
     status_running: "Running",
@@ -74,6 +77,7 @@ const TRAY_TEXT_EN_US: TrayText = TrayText {
 
 const TRAY_TEXT_JA_JP: TrayText = TrayText {
     show_window: "メイン画面を表示",
+    rebuild_window: "ウィンドウを再構築",
     kernel_menu: "カーネル",
     restart_kernel: "カーネルを再起動",
     status_running: "稼働中",
@@ -91,6 +95,7 @@ const TRAY_TEXT_JA_JP: TrayText = TrayText {
 
 const TRAY_TEXT_RU_RU: TrayText = TrayText {
     show_window: "Показать окно",
+    rebuild_window: "Пересоздать окно",
     kernel_menu: "Ядро",
     restart_kernel: "Перезапустить ядро",
     status_running: "Запущено",
@@ -185,7 +190,13 @@ fn build_tray_menu(
     state: &TrayRuntimeState,
     text: &TrayText,
 ) -> Result<tauri::menu::Menu<tauri::Wry>, String> {
-    let show_window_item = MenuItemBuilder::with_id(menu_ids::SHOW_WINDOW, text.show_window)
+    let primary_window_action = if state.window_visible {
+        text.show_window
+    } else {
+        text.rebuild_window
+    };
+
+    let show_window_item = MenuItemBuilder::with_id(menu_ids::SHOW_WINDOW, primary_window_action)
         .build(app)
         .map_err(|e| format!("创建托盘菜单项失败: {}", e))?;
 
