@@ -1,5 +1,19 @@
 # 更新日志
 
+## [v2.2.11] - 2026-04-13
+
+### ✨ 新功能
+
+- Add your feature descriptions here
+
+### 🔧 优化改进
+
+- Add improvements here
+
+### 🐛 问题修复
+
+- Add bug fixes here
+
 ## [Unreleased]
 
 ### ✨ 新功能
