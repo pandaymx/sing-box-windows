@@ -1,19 +1,5 @@
 # 更新日志
 
-## [v2.2.11] - 2026-04-13
-
-### ✨ 新功能
-
-- Add your feature descriptions here
-
-### 🔧 优化改进
-
-- Add improvements here
-
-### 🐛 问题修复
-
-- Add bug fixes here
-
 ## [Unreleased]
 
 ### ✨ 新功能
@@ -28,6 +14,20 @@
 ### 🐛 问题修复
 
 - **自启动托盘图标状态回填修复** - 开机自启并隐藏到托盘时，后端会在启动恢复与内核自动管理后主动刷新托盘运行态；系统代理/TUN 已开启时无需先打开主界面，托盘图标和菜单状态即可立即正确着色与回显
+
+## [v2.2.11] - 2026-04-13
+
+### ✨ 新功能
+
+- Add your feature descriptions here
+
+### 🔧 优化改进
+
+- Add improvements here
+
+### 🐛 问题修复
+
+- Add bug fixes here
 
 ## [v2.2.9] - 2026-04-04
 
