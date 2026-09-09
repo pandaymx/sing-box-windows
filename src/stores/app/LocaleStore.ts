@@ -13,6 +13,19 @@ const isLocaleCode = (value: unknown): value is LocaleCode =>
 const isLocaleValue = (value: unknown): value is Locale =>
   value === 'auto' || isLocaleCode(value)
 
+const resolveLocaleCode = (value: string | undefined): LocaleCode | null => {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) return null
+
+  const exactMatch = supportedLocales.find((loc) => loc.code.toLowerCase() === normalized)
+  if (exactMatch) return exactMatch.code
+
+  const language = normalized.split(/[-_]/, 1)[0]
+  return (
+    supportedLocales.find((loc) => loc.code.toLowerCase().startsWith(`${language}-`))?.code ?? null
+  )
+}
+
 export const useLocaleStore = defineStore(
   'locale',
   () => {
@@ -47,9 +60,16 @@ export const useLocaleStore = defineStore(
     // 计算实际使用的语言
     const currentLocale = computed<LocaleCode>(() => {
       if (locale.value === 'auto') {
-        // 获取浏览器语言
-        const browserLang = navigator.language
-        return isLocaleCode(browserLang) ? browserLang : DEFAULT_LOCALE
+        // Windows WebView 可能只返回 zh、zh-Hans 或大小写不同的 locale。
+        const browserLanguages =
+          typeof navigator !== 'undefined' && Array.isArray(navigator.languages)
+            ? navigator.languages
+            : []
+        const candidates = [
+          ...browserLanguages,
+          typeof navigator !== 'undefined' ? navigator.language : undefined,
+        ]
+        return candidates.map(resolveLocaleCode).find((code): code is LocaleCode => !!code) ?? DEFAULT_LOCALE
       }
       return isLocaleCode(locale.value) ? locale.value : DEFAULT_LOCALE
     })
