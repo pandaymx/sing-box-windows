@@ -252,7 +252,7 @@ export const useKernelStore = defineStore('kernel', () => {
       const cleaned = normalizeKernelVersion(version)
       isKernelInstalled.value = Boolean(cleaned)
       if (cleaned) {
-        status.value.version = cleaned
+        status.value = { ...status.value, version: cleaned }
       }
       return isKernelInstalled.value
     } catch (error) {
@@ -391,9 +391,10 @@ function normalizeKernelVersion(raw: string): string {
 }
 
 function trimPrefix(version: string): string {
-  let v = version.trim()
-  if (v.toLowerCase().startsWith('sing-box')) {
-    v = v.slice('sing-box'.length).trim()
+  const v = version.trim()
+  const versionMatch = v.match(/(?:sing-box\s+)?(?:version\s+)?v?(\d+(?:\.\d+){1,3})/i)
+  if (versionMatch?.[1]) {
+    return versionMatch[1]
   }
   return v.replace(/^v/, '')
 }
