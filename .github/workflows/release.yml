@@ -80,8 +80,8 @@ jobs:
           # 透传 token 给 fetch-kernel，避免匿名 API 限流导致 latest 拉取失败。
           SING_BOX_GITHUB_TOKEN: ${{ github.token }}
         run: |
-          pnpm run build
-          # 显式走 package script（tauri-wrapper），确保只注入当前 target 的内核资源
+          # tauri.conf.json 的 beforeBuildCommand 已负责执行一次 pnpm build，避免重复构建前端。
+          # 显式走 package script（tauri-wrapper），确保只注入当前 target 的内核资源。
           pnpm run tauri build --target ${{ matrix.target }}
 
       - name: Add macOS architecture suffixes
