@@ -55,6 +55,19 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Setup sccache
+        if: startsWith(matrix.os, 'windows-') || startsWith(matrix.os, 'ubuntu-')
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache sccache
+        if: startsWith(matrix.os, 'windows-') || startsWith(matrix.os, 'ubuntu-')
+        uses: actions/cache@v4
+        with:
+          path: .sccache
+          key: sccache-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            sccache-${{ runner.os }}-${{ matrix.target }}-
+
       - name: Install system dependencies (Linux)
         if: startsWith(matrix.os, 'ubuntu-')
         run: |
@@ -79,6 +92,8 @@ jobs:
         env:
           # 透传 token 给 fetch-kernel，避免匿名 API 限流导致 latest 拉取失败。
           SING_BOX_GITHUB_TOKEN: ${{ github.token }}
+          RUSTC_WRAPPER: sccache
+          SCCACHE_DIR: ${{ github.workspace }}/.sccache
         run: |
           # tauri.conf.json 的 beforeBuildCommand 已负责执行一次 pnpm build，避免重复构建前端。
           # 显式走 package script（tauri-wrapper），确保只注入当前 target 的内核资源。
@@ -219,7 +234,7 @@ jobs:
           prerelease: true
           make_latest: false
           generate_release_notes: false
-          name: "[Pre-release] ${{ steps.tag.outputs.tag }}"
+          name: '[Pre-release] ${{ steps.tag.outputs.tag }}'
           tag_name: ${{ steps.tag.outputs.tag }}
           body: ${{ steps.extract_notes.outputs.release_notes }}
           files: |
